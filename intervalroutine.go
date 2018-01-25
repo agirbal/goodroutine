@@ -23,7 +23,6 @@ type IntervalRoutine struct {
 	runInterval     time.Duration
 	retryInterval   time.Duration
 	currentInterval time.Duration
-	ticker          *time.Ticker
 	force           chan bool
 	done            chan bool
 	start           sync.Once
@@ -57,23 +56,6 @@ func (rrt *IntervalRoutine) TriggerRun() {
 	case rrt.force <- true:
 	default:
 		// already has a force
-	}
-}
-
-func (rrt *IntervalRoutine) updateTicker(interval time.Duration) {
-	if interval == rrt.currentInterval {
-		// nothing to change
-		return
-	}
-
-	if rrt.ticker != nil {
-		rrt.ticker.Stop()
-		rrt.ticker = nil
-	}
-
-	rrt.currentInterval = interval
-	if interval > 0 {
-		rrt.ticker = time.NewTicker(interval)
 	}
 }
 
@@ -114,29 +96,34 @@ func (rrt *IntervalRoutine) runSafe() bool {
 	}
 
 	var err error
-	var tickerC <-chan time.Time
-	// if ticker not set, channel will appropriately block
-	if rrt.ticker != nil {
-		tickerC = rrt.ticker.C
+	var timerC <-chan time.Time
+	if rrt.currentInterval > 0 {
+		timerC = time.NewTimer(rrt.currentInterval).C
 	}
 
 	select {
-	case <-tickerC:
+	case <-timerC:
+		select {
+		case <-rrt.done:
+			return false
+		default:
+		}
 		err = rrt.f()
 	case <-rrt.force:
+		select {
+		case <-rrt.done:
+			return false
+		default:
+		}
 		err = rrt.f()
 	case <-rrt.done:
-		if rrt.ticker != nil {
-			rrt.ticker.Stop()
-		}
 		return false
 	}
 
-	interval := rrt.runInterval
 	if err != nil && rrt.retryInterval > 0 {
-		// retry
-		interval = rrt.retryInterval
+		rrt.currentInterval = rrt.retryInterval
+	} else {
+		rrt.currentInterval = rrt.runInterval
 	}
-	rrt.updateTicker(interval)
 	return true
 }
