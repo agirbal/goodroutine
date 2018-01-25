@@ -98,7 +98,9 @@ func (rrt *IntervalRoutine) runSafe() bool {
 	var err error
 	var timerC <-chan time.Time
 	if rrt.currentInterval > 0 {
-		timerC = time.NewTimer(rrt.currentInterval).C
+		timer := time.NewTimer(rrt.currentInterval)
+		timerC = timer.C
+		defer timer.Stop()
 	}
 
 	select {
