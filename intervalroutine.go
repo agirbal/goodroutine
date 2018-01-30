@@ -30,15 +30,18 @@ type IntervalRoutine struct {
 
 	// NoRecover if set to true, panics are not recovered
 	NoRecover bool
-	OnPanic   func(recovered interface{})
+	// NoRetryBackoff if set to true, retry interval does not increase exponentially
+	NoRetryBackoff bool
+	OnPanic        func(recovered interface{})
 }
 
 // NewIntervalRoutine creates a new IntervalRoutine, which takes care of running f().
 // Runs may be triggered in 3 ways:
 // - normally at each run interval
-// - at the retry interval, if f() returned an error
+// - at the retry interval, if f() last returned an error
 // - if TriggerRun was called
-// A typical usage is a runInterval of 5min, retryInterval of 5sec.
+// A typical usage is a runInterval of 5min, retryInterval of 30sec.
+// By default the retry interval increases exponentially from initial value up to the run interval.
 func NewIntervalRoutine(f func() error, runInterval time.Duration, retryInterval time.Duration) *IntervalRoutine {
 	return &IntervalRoutine{
 		f:             f,
@@ -123,7 +126,16 @@ func (rrt *IntervalRoutine) runSafe() bool {
 	}
 
 	if err != nil && rrt.retryInterval > 0 {
-		rrt.currentInterval = rrt.retryInterval
+		if !rrt.NoRetryBackoff && rrt.currentInterval > 0 && rrt.currentInterval < rrt.runInterval {
+			// current interval is set to some retry interval, increase exponentially
+			rrt.currentInterval = rrt.currentInterval * 2
+			if rrt.currentInterval >= rrt.runInterval {
+				// set slightly lower to recognize retry interval
+				rrt.currentInterval = rrt.runInterval - time.Millisecond
+			}
+		} else {
+			rrt.currentInterval = rrt.retryInterval
+		}
 	} else {
 		rrt.currentInterval = rrt.runInterval
 	}

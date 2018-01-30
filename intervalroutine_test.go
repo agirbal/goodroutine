@@ -1,6 +1,7 @@
 package goodroutine
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -131,5 +132,100 @@ func TestStop(t *testing.T) {
 	case <-called:
 		t.Error("function called after stop()")
 	case <-time.Tick(10 * time.Millisecond):
+	}
+}
+
+func TestInterval(t *testing.T) {
+	called := make(chan bool)
+	f := func() error {
+		called <- true
+		return nil
+	}
+	interval := 100 * time.Millisecond
+	rt := NewIntervalRoutine(f, interval, 0)
+	rt.Start()
+	// should be called at start
+	select {
+	case <-called:
+	case <-time.Tick(10 * time.Millisecond):
+		t.Error("function was not called")
+	}
+
+	// should be called at interval
+	for i := 0; i < 5; i++ {
+		time.Sleep(interval)
+		select {
+		case <-called:
+		case <-time.Tick(10 * time.Millisecond):
+			t.Error("function was not called")
+		}
+	}
+
+	rt.Stop()
+	// no more calls should be made
+	select {
+	case <-called:
+		t.Error("function called after stop()")
+	case <-time.Tick(interval):
+	}
+}
+
+func TestRetryInterval(t *testing.T) {
+	called := make(chan bool)
+	f := func() error {
+		called <- true
+		return errors.New("error")
+	}
+	run := 200 * time.Millisecond
+	retry := 100 * time.Millisecond
+	rt := NewIntervalRoutine(f, run, retry)
+	rt.Start()
+	// should be called at start
+	select {
+	case <-called:
+	case <-time.Tick(10 * time.Millisecond):
+		t.Error("function was not called")
+	}
+
+	// should be called at exponential interval
+	sleep := retry
+	for i := 0; i < 5; i++ {
+		time.Sleep(sleep)
+		select {
+		case <-called:
+		case <-time.Tick(10 * time.Millisecond):
+			t.Error("function was not called")
+		}
+
+		sleep = 2 * sleep
+		if retry > run {
+			sleep = run
+		}
+	}
+
+	// now again but no backoff
+	rt.NoRetryBackoff = true
+	time.Sleep(run)
+	select {
+	case <-called:
+	case <-time.Tick(10 * time.Millisecond):
+		t.Error("function was not called")
+	}
+
+	for i := 0; i < 5; i++ {
+		time.Sleep(retry)
+		select {
+		case <-called:
+		case <-time.Tick(10 * time.Millisecond):
+			t.Error("function was not called")
+		}
+	}
+
+	rt.Stop()
+	// no more calls should be made
+	select {
+	case <-called:
+		t.Error("function called after stop()")
+	case <-time.Tick(run):
 	}
 }
