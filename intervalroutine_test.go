@@ -176,7 +176,7 @@ func TestRetryInterval(t *testing.T) {
 		called <- true
 		return errors.New("error")
 	}
-	run := 200 * time.Millisecond
+	run := 1 * time.Second
 	retry := 100 * time.Millisecond
 	rt := NewIntervalRoutine(f, run, retry)
 	rt.Start()
@@ -204,7 +204,7 @@ func TestRetryInterval(t *testing.T) {
 	}
 
 	// now again but no backoff
-	rt.NoRetryBackoff = true
+	rt.RetryBackoffDisabled = true
 	time.Sleep(run)
 	select {
 	case <-called:

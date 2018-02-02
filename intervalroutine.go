@@ -28,11 +28,11 @@ type IntervalRoutine struct {
 	start           sync.Once
 	stop            sync.Once
 
-	// NoRecover if set to true, panics are not recovered
-	NoRecover bool
-	// NoRetryBackoff if set to true, retry interval does not increase exponentially
-	NoRetryBackoff bool
-	OnPanic        func(recovered interface{})
+	// PanicRecoverDisabled if set to true, panics are not recovered
+	PanicRecoverDisabled bool
+	// RetryBackoffDisabled if set to true, retry interval does not increase exponentially
+	RetryBackoffDisabled bool
+	OnPanic              func(recovered interface{})
 }
 
 // NewIntervalRoutine creates a new IntervalRoutine, which takes care of running f().
@@ -41,8 +41,13 @@ type IntervalRoutine struct {
 // - at the retry interval, if f() last returned an error
 // - if TriggerRun was called
 // A typical usage is a runInterval of 5min, retryInterval of 30sec.
-// By default the retry interval increases exponentially from initial value up to the run interval.
+// By default the retry interval increases exponentially from retryInterval up to runInterval.
+// retryInterval cannot be set higher than runInterval.
 func NewIntervalRoutine(f func() error, runInterval time.Duration, retryInterval time.Duration) *IntervalRoutine {
+	if retryInterval > runInterval {
+		// wrong interval, disable custom retry
+		retryInterval = 0
+	}
 	return &IntervalRoutine{
 		f:             f,
 		runInterval:   runInterval,
@@ -85,7 +90,7 @@ func (rrt *IntervalRoutine) Stop() {
 }
 
 func (rrt *IntervalRoutine) runSafe() bool {
-	if !rrt.NoRecover {
+	if !rrt.PanicRecoverDisabled {
 		// recover any panic
 		defer func() {
 			if r := recover(); r != nil {
@@ -126,16 +131,17 @@ func (rrt *IntervalRoutine) runSafe() bool {
 	}
 
 	if err != nil && rrt.retryInterval > 0 {
-		if !rrt.NoRetryBackoff && rrt.currentInterval > 0 && rrt.currentInterval < rrt.runInterval {
-			// current interval is set to some retry interval, increase exponentially
-			rrt.currentInterval = rrt.currentInterval * 2
-			if rrt.currentInterval >= rrt.runInterval {
-				// set slightly lower to recognize retry interval
-				rrt.currentInterval = rrt.runInterval - time.Millisecond
+		retryInterval := rrt.retryInterval
+		// rrt.currentInterval == rrt.runInterval on the first retry only
+		if !rrt.RetryBackoffDisabled && rrt.currentInterval > 0 && rrt.currentInterval < rrt.runInterval {
+			// backoff, starting from rrt.retryInterval, up to rrt.runInterval
+			retryInterval = rrt.currentInterval * 2
+			if retryInterval >= rrt.runInterval {
+				// set the interval just under run interval to differentiate
+				retryInterval = rrt.runInterval - 1
 			}
-		} else {
-			rrt.currentInterval = rrt.retryInterval
 		}
+		rrt.currentInterval = retryInterval
 	} else {
 		rrt.currentInterval = rrt.runInterval
 	}
