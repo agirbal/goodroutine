@@ -35,9 +35,9 @@ func NewFileChangeRoutine(f func() error, runInterval time.Duration, retryInterv
 		innerF: f,
 		once:   &sync.Once{},
 	}
-	fcr.IntervalRoutine.f = func() error {
+	fcr.IntervalRoutine.runner = RunnerFunc(func() error {
 		return fcr.update()
-	}
+	})
 	return fcr
 }
 

@@ -16,10 +16,26 @@ import (
 	"time"
 )
 
+// Runner implements a function that is run at interval
+type Runner interface {
+	IntervalRun() error
+}
+
+// The RunnerFunc type is an adapter to allow the use of
+// ordinary functions as Runner. If f is a function
+// with the appropriate signature, RunnerFunc(f) is a
+// Runner that calls f.
+type RunnerFunc func() error
+
+// IntervalRun implements the Runner interface
+func (rf RunnerFunc) IntervalRun() error {
+	return rf()
+}
+
 // IntervalRoutine implements a management goroutine.
 // It provides a safe way to run a function, at interval, from a single goroutine.
 type IntervalRoutine struct {
-	f               func() error
+	runner          Runner
 	runInterval     time.Duration
 	retryInterval   time.Duration
 	currentInterval time.Duration
@@ -35,21 +51,21 @@ type IntervalRoutine struct {
 	OnPanic              func(recovered interface{})
 }
 
-// NewIntervalRoutine creates a new IntervalRoutine, which takes care of running f().
+// NewIntervalRoutine creates a new IntervalRoutine.
 // Runs may be triggered in 3 ways:
 // - normally at each run interval
-// - at the retry interval, if f() last returned an error
+// - at the retry interval, if the last run returned an error
 // - if TriggerRun was called
 // A typical usage is a runInterval of 5min, retryInterval of 30sec.
 // By default the retry interval increases exponentially from retryInterval up to runInterval.
 // retryInterval cannot be set higher than runInterval.
-func NewIntervalRoutine(f func() error, runInterval time.Duration, retryInterval time.Duration) *IntervalRoutine {
+func NewIntervalRoutine(runner Runner, runInterval time.Duration, retryInterval time.Duration) *IntervalRoutine {
 	if retryInterval > runInterval {
 		// wrong interval, disable custom retry
 		retryInterval = 0
 	}
 	return &IntervalRoutine{
-		f:             f,
+		runner:        runner,
 		runInterval:   runInterval,
 		retryInterval: retryInterval,
 		force:         make(chan bool, 1),
@@ -118,14 +134,14 @@ func (rrt *IntervalRoutine) runSafe() bool {
 			return false
 		default:
 		}
-		err = rrt.f()
+		err = rrt.runner.IntervalRun()
 	case <-rrt.force:
 		select {
 		case <-rrt.done:
 			return false
 		default:
 		}
-		err = rrt.f()
+		err = rrt.runner.IntervalRun()
 	case <-rrt.done:
 		return false
 	}
