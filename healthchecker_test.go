@@ -55,13 +55,14 @@ func TestHealthChecker(t *testing.T) {
 			f := func() error {
 				return nil
 			}
-			hc := NewHealthChecker(f, tt.initial, tt.thresholdUp, tt.thresholdDown)
+			hc := NewHealthChecker(RunnerFunc(f), tt.initial, tt.thresholdUp, tt.thresholdDown)
+			hc.FastStart = false
 
 			// test default
 			hc.OnUp = func(numUps int, numDowns int) {
 				t.Errorf("Should not be called, numUps=%d, numDowns=%d", numUps, numDowns)
 			}
-			hc.OnDown = func(numUps int, numDowns int) {
+			hc.OnDown = func(numUps int, numDowns int, lastErr error) {
 				t.Errorf("Should not be called, numUps=%d, numDowns=%d", numUps, numDowns)
 			}
 			if g, w := hc.IsUp(), tt.initial; g != w {
@@ -76,9 +77,9 @@ func TestHealthChecker(t *testing.T) {
 }
 
 func testStateChange(t *testing.T, hc *HealthChecker, checkErr error, numRuns int, current bool, expected bool) {
-	hc.f = func() error {
+	hc.runner = RunnerFunc(func() error {
 		return checkErr
-	}
+	})
 	callback := false
 	hc.OnUp = func(numUps int, numDowns int) {
 		if expected && !current {
@@ -90,7 +91,7 @@ func testStateChange(t *testing.T, hc *HealthChecker, checkErr error, numRuns in
 			t.Errorf("Should not be called, numUps=%d, numDowns=%d", numUps, numDowns)
 		}
 	}
-	hc.OnDown = func(numUps int, numDowns int) {
+	hc.OnDown = func(numUps int, numDowns int, lastErr error) {
 		if !expected && current {
 			callback = true
 			if g, w := numDowns, hc.thresholdDown; g != w {
@@ -102,7 +103,7 @@ func testStateChange(t *testing.T, hc *HealthChecker, checkErr error, numRuns in
 	}
 
 	for i := 0; i < numRuns; i++ {
-		err := hc.Run()
+		err := hc.IntervalRun()
 		if g, w := err, checkErr; g != w {
 			t.Errorf("Error does not match, got=%v, want=%v", g, w)
 		}

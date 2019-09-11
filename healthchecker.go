@@ -8,14 +8,14 @@ import (
 // HealthChecker implements a health check, using a threshold for up / down logic.
 // It can be combined with an IntervalRoutine to implement a health check goroutine.
 type HealthChecker struct {
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	runner        Runner
 	state         int32
 	ups           int
 	downs         int
 	thresholdUp   int
 	thresholdDown int
-	lastErr       atomic.Value
+	lastErr       error
 	firstRun      bool
 
 	// OnUp is called when state changes to up, numDowns is number of prior downs
@@ -65,7 +65,7 @@ func (hrt *HealthChecker) Reset(newState bool) {
 		}
 	} else {
 		if hrt.OnDown != nil {
-			defer hrt.OnDown(hrt.ups, hrt.downs, hrt.LastErr())
+			defer hrt.OnDown(hrt.ups, hrt.downs, hrt.lastErr)
 		}
 	}
 	atomic.StoreInt32(&hrt.state, state)
@@ -94,7 +94,7 @@ func (hrt *HealthChecker) IntervalRun() error {
 			}
 			hrt.ups = 0
 		}
-		hrt.lastErr.Store(err)
+		hrt.lastErr = err
 	} else {
 		hrt.ups++
 		if wasUp {
@@ -122,8 +122,7 @@ func (hrt *HealthChecker) IsUp() bool {
 
 // LastErr returns the last error
 func (hrt *HealthChecker) LastErr() error {
-	if err := hrt.lastErr.Load(); err != nil {
-		return err.(error)
-	}
-	return nil
+	hrt.mu.RLock()
+	defer hrt.mu.RUnlock()
+	return hrt.lastErr
 }

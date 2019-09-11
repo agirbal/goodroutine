@@ -18,7 +18,7 @@ func TestRecover(t *testing.T) {
 		called <- true
 		panic("blah")
 	}
-	rt := NewIntervalRoutine(f, 0, 0)
+	rt := NewIntervalRoutine(RunnerFunc(f), 0, 0)
 	rt.Start()
 	defer rt.Stop()
 	select {
@@ -34,7 +34,7 @@ func TestTrigger(t *testing.T) {
 		called <- true
 		return nil
 	}
-	rt := NewIntervalRoutine(f, 0, 0)
+	rt := NewIntervalRoutine(RunnerFunc(f), 0, 0)
 	rt.Start()
 	defer rt.Stop()
 	// should be called at start
@@ -62,7 +62,7 @@ func TestTriggerBlock(t *testing.T) {
 		<-barrier
 		return nil
 	}
-	rt := NewIntervalRoutine(f, 0, 0)
+	rt := NewIntervalRoutine(RunnerFunc(f), 0, 0)
 	rt.Start()
 	defer rt.Stop()
 	// should be called at start
@@ -111,7 +111,7 @@ func TestStop(t *testing.T) {
 		<-barrier
 		return nil
 	}
-	rt := NewIntervalRoutine(f, 0, 0)
+	rt := NewIntervalRoutine(RunnerFunc(f), 0, 0)
 	rt.Start()
 	// should be called at start
 	select {
@@ -142,7 +142,7 @@ func TestInterval(t *testing.T) {
 		return nil
 	}
 	interval := 100 * time.Millisecond
-	rt := NewIntervalRoutine(f, interval, 0)
+	rt := NewIntervalRoutine(RunnerFunc(f), interval, 0)
 	rt.Start()
 	// should be called at start
 	select {
@@ -178,7 +178,7 @@ func TestRetryInterval(t *testing.T) {
 	}
 	run := 1 * time.Second
 	retry := 100 * time.Millisecond
-	rt := NewIntervalRoutine(f, run, retry)
+	rt := NewIntervalRoutine(RunnerFunc(f), run, retry)
 	rt.Start()
 	// should be called at start
 	select {
